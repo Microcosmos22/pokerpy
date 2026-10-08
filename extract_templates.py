@@ -3,6 +3,7 @@ import numpy as np
 import os
 
 def main():
+    saved_count = 0
     # 1. Load the master deck sheet
     img_path = "deck_sheet.jpg"  # Rename your downloaded image to this
     deck_img = cv2.imread(img_path)
@@ -86,10 +87,7 @@ def main():
         5: ['J', 'Q', 'K', 'Joker1', 'Joker2']
     }
 
-    # 5. Extract and show the top-left corner templates
-    i = 0
-    j=0
-       # 5. Extract and save the top-left corner templates
+        # 5. Extract and save the top-left corner templates
     for row_idx, row in enumerate(rows):
 
         # This index keeps track of our labels (0 to 9) across the row
@@ -101,25 +99,29 @@ def main():
 
             # --- SKIP THE BAD IMAGE HERE ---
             # If this is the Clubs row (Row 3) and it's the bad duplicate image...
-            # Note: Change 'col_idx == 2' to whatever column index the bad image is sitting on.
             if row_idx == 3 and col_idx == 2:
                 print(f"Skipping bad image at column {col_idx}, holding the label for the next card.")
                 continue # Discards this bad image instantly. name_index stays the same!
             # -------------------------------
+
+            # Determine Rank using name_index instead of col_idx
+            is_left_side = name_index < 5
+            lookup_col = name_index if is_left_side else name_index - 5
+            rank = rank_mapping[row_idx][lookup_col]
+
+            # --- FIX FOR MISSING FACE CARDS ---
+            # We increment the name index for the layout column BEFORE skipping the Joker.
+            # This ensures that columns 5, 6, and 7 (J, Q, K) line up correctly on the right side.
+            if "Joker" in rank:
+                name_index += 1
+                continue
+            # ----------------------------------
 
             # 1. Process the valid card crop
             card_crop = deck_img[y:y+h, x:x+w]
             corner_w = int(w * 0.25)
             corner_h = int(h * 0.35)
             corner_crop = card_crop[0:corner_h, 0:corner_w]
-
-            # 2. Determine Rank using name_index instead of col_idx
-            is_left_side = name_index < 5
-            lookup_col = name_index if is_left_side else name_index - 5
-            rank = rank_mapping[row_idx][lookup_col]
-
-            if "Joker" in rank:
-                continue
 
             # 3. Determine Suit
             if row_idx < 3:
@@ -129,19 +131,18 @@ def main():
 
             card_name = f"{rank}{suit}"
 
-            i+=1
-            if i > 20:
-                # 4. Display to verify
-                cv2.imshow(f"Template Name: {card_name}", corner_crop)
-                print(f"Showing verified template corner for: {card_name}. Press any key...")
-                cv2.waitKey(0)
-                cv2.destroyAllWindows()
+            filename = f"{card_name}.png"
+            filepath = os.path.join(output_dir, filename)
 
-            # If it looks correct, uncomment the line below to save it:
-            # cv2.imwrite(f"templates/{card_name}.png", corner_crop)
+            print(f"Writing file: {filename} from Row {row_idx}, Col {col_idx}")
+            cv2.imwrite(filepath, corner_crop)
+            saved_count += 1
 
-            # 5. Crucial: Only advance our naming position if we actually processed a card!
+            # 5. Advance our naming tracker now that this card is safely archived
             name_index += 1
+
+    print(f"\n Done! Successfully generated {saved_count} card templates inside your '/{output_dir}' directory!")
+
 
 if __name__ == "__main__":
     main()
