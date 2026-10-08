@@ -5,7 +5,8 @@ import os
 
 
 def main():
-    saved_count = 0
+    saved_ranks = set()
+    saved_suits = set()
 
     # 1. Load the master deck sheet
     img_path = "deck_sheet.jpg"
@@ -15,13 +16,17 @@ def main():
         print(f"Error: Could not load {img_path}")
         return
 
-    # Create output directory
+    # Create output directories
     output_dir = "templates"
-    os.makedirs(output_dir, exist_ok=True)
+    ranks_dir = os.path.join(output_dir, "ranks")
+    suits_dir = os.path.join(output_dir, "suits")
+
+    os.makedirs(ranks_dir, exist_ok=True)
+    os.makedirs(suits_dir, exist_ok=True)
 
     # 2. Preprocess to find card boundaries
-    # Use grayscale + threshold ONLY for contour detection.
-    # The original color image (deck_img) is kept for template extraction.
+    # Grayscale + threshold are ONLY used for contour detection.
+    # The original color image is kept for extracting the templates.
     gray = cv2.cvtColor(deck_img, cv2.COLOR_BGR2GRAY)
 
     _, thresh = cv2.threshold(
@@ -59,20 +64,17 @@ def main():
 
     # 3. Use OpenCV K-Means to cluster Y-centers into 6 exact rows
 
-    # Step 3a: Extract all center Y positions
     centers_y = []
 
     for c in card_contours:
         x, y, w, h = cv2.boundingRect(c)
         centers_y.append(y + (h // 2))
 
-    # Format data for cv2.kmeans (must be float32)
     centers_y = np.array(
         centers_y,
         dtype=np.float32
     ).reshape(-1, 1)
 
-    # Step 3b: Run K-Means to find the 6 true horizontal row coordinates
     criteria = (
         cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
         10,
@@ -88,15 +90,18 @@ def main():
         cv2.KMEANS_RANDOM_CENTERS
     )
 
-    # Step 3c: Map cluster center values back to sorted row index
-    sorted_centers_indices = np.argsort(centers.flatten())
+    # Map cluster centers to sorted row indices
+    sorted_centers_indices = np.argsort(
+        centers.flatten()
+    )
 
     cluster_to_row_idx = {
         cluster_id: row_idx
-        for row_idx, cluster_id in enumerate(sorted_centers_indices)
+        for row_idx, cluster_id
+        in enumerate(sorted_centers_indices)
     }
 
-    # Step 3d: Distribute contours into row buckets
+    # Distribute contours into row buckets
     row_buckets = [[] for _ in range(6)]
 
     for i, c in enumerate(card_contours):
@@ -104,7 +109,7 @@ def main():
         assigned_row = cluster_to_row_idx[cluster_id]
         row_buckets[assigned_row].append(c)
 
-    # Step 3e: Sort each row strictly left-to-right
+    # Sort each row strictly left-to-right
     rows = []
 
     for bucket in row_buckets:
@@ -124,11 +129,10 @@ def main():
         5: ['J', 'Q', 'K', 'Joker1', 'Joker2']
     }
 
-    # 5. Extract and save the top-left corner templates
-    # The crop comes directly from deck_img, so it remains COLOR.
+    # 5. Extract rank and suit templates
     for row_idx, row in enumerate(rows):
 
-        # Tracks our labels across the row
+        # Tracks labels across the row
         name_index = 0
 
         for col_idx, contour in enumerate(row):
@@ -143,8 +147,9 @@ def main():
                 )
                 continue
 
-            # Determine rank using name_index
+            # Determine whether we are on the left or right side
             is_left_side = name_index < 5
+
             lookup_col = (
                 name_index
                 if is_left_side
@@ -158,52 +163,88 @@ def main():
                 name_index += 1
                 continue
 
-            # Process the valid card crop.
-            # IMPORTANT: card_crop comes from the ORIGINAL COLOR image.
-            card_crop = deck_img[y:y+h, x:x+w]
-
-            corner_w = int(w * 0.17)
-            corner_h = int(h * 0.25)
-
-            corner_crop = card_crop[
-                4:corner_h,
-                3:corner_w
-            ]
-
-            # 6. Determine Suit
+            # Determine suit from the grid
             if row_idx < 3:
                 suit = 'h' if is_left_side else 'd'
             else:
                 suit = 'c' if is_left_side else 's'
 
-            card_name = f"{rank}{suit}"
+            # -------------------------------------------------
+            # Extract the card from the ORIGINAL COLOR image
+            # -------------------------------------------------
 
-            filename = f"{card_name}.png"
-            filepath = os.path.join(
-                output_dir,
-                filename
-            )
+            card_crop = deck_img[
+                y:y+h,
+                x:x+w
+            ]
 
-            print(
-                f"Writing file: {filename} "
-                f"from Row {row_idx}, Col {col_idx}"
-            )
+            # -------------------------------------------------
+            # Extract the top-left corner
+            # -------------------------------------------------
 
-            # Save the COLOR template
-            cv2.imwrite(
-                filepath,
-                corner_crop
-            )
+            corner_w = int(w * 0.16)
+            corner_h = int(h * 0.23)
 
-            saved_count += 1
+            corner_crop = card_crop[22:corner_h,13:corner_w]
+
+            # -------------------------------------------------
+            # Split corner into rank and suit
+            #
+            # Top half    -> rank
+            # Bottom half -> suit
+            # -------------------------------------------------
+
+            split_y = corner_crop.shape[0] // 2 + 8
+
+            rank_crop = corner_crop[:split_y,:]
+
+            suit_crop = corner_crop[split_y:,:]
+
+            # -------------------------------------------------
+            # Save rank template
+            #
+            # Only save each rank once.
+            # -------------------------------------------------
+
+            if rank not in saved_ranks:
+
+                rank_filename = f"{rank}.png"
+                rank_filepath = os.path.join(ranks_dir,rank_filename)
+
+                cv2.imwrite(rank_filepath,rank_crop)
+
+                saved_ranks.add(rank)
+
+                print(f"Saved rank template: {rank_filename} "f"from Row {row_idx}, Col {col_idx}")
+
+            # -------------------------------------------------
+            # Save suit template
+            #
+            # Only save each suit once.
+            # -------------------------------------------------
+
+            if suit not in saved_suits:
+
+                suit_filename = f"{suit}.png"
+                suit_filepath = os.path.join(suits_dir,suit_filename)
+
+                cv2.imwrite(suit_filepath,suit_crop)
+
+                saved_suits.add(suit)
+
+                print(f"Saved suit template: {suit_filename} "f"from Row {row_idx}, Col {col_idx}")
 
             # Advance naming tracker
             name_index += 1
 
+    print("\nDone!")
     print(
-        f"\nDone! Successfully generated "
-        f"{saved_count} color card templates "
-        f"inside your '/{output_dir}' directory!"
+        f"Saved {len(saved_ranks)} rank templates "
+        f"to '{ranks_dir}'"
+    )
+    print(
+        f"Saved {len(saved_suits)} suit templates "
+        f"to '{suits_dir}'"
     )
 
 
