@@ -39,29 +39,28 @@ def draw_poker_bar(rank: int, width: int = 30):
         end=""
     )
 
+
+
 # Initialize the evaluator
 evaluator = Evaluator()
 
-# --- SCENARIO 1: Weak Hand ---
-board1 = [Card.new('Qh'), Card.new('Kd'), Card.new('Jc'), Card.new('5s'), Card.new('4d')]
-hand1 = [Card.new('2s'), Card.new('Th')]
-score1 = evaluator.evaluate(board1, hand1)
 
-# --- SCENARIO 2: Royal Flush ---
-board2 = [Card.new('Qh'), Card.new('Kh'), Card.new('Jh')]
-hand2 = [Card.new('Ah'), Card.new('Th')]
-score_max = evaluator.evaluate(board2, hand2)
+while True:
 
-# --- EXECUTION / SIMULATION ---
-console.print("[bold underline]Live Poker Hand Evaluation:[/bold underline]\n")
+    user_input = input("Enter cards: ")
+    hand1 = [Card.new(user_input[i:i+2]) for i in range(0, 4, 2)]
 
-# Display Scenario 1
-draw_poker_bar(score1)
-time.sleep(2.0)  # Pause for 2 seconds so you can see the first hand value
+    board1 = [Card.new(user_input[i:i+2]) for i in range(4, len(user_input), 2)]
 
-# Move to a new line for the next hand state, just like dealing a new stage
-console.print()
+    score1 = evaluator.evaluate(board1, hand1)
 
-# Display Scenario 2
-draw_poker_bar(score_max)
-console.print()  # Final clean line break
+
+    # --- EXECUTION / SIMULATION ---
+    console.print("[bold underline]Live Poker Hand Evaluation:[/bold underline]\n")
+
+    # Display Scenario 1
+    draw_poker_bar(score1)
+    time.sleep(2.0)  # Pause for 2 seconds so you can see the first hand value
+
+    # Move to a new line for the next hand state, just like dealing a new stage
+    console.print()
